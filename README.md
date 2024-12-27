@@ -54,3 +54,19 @@ Aplikasi web untuk menganalisis dan membandingkan kinerja saham perusahaan perta
 - seaborn
 
 ## 📦 Struktur Data
+project/
+├── app.py
+├── dataset_dividen/
+│   ├── Deviden Yield Percentage ADRO.csv
+│   ├── Deviden Yield Percentage ANTM.csv
+│   ├── Deviden Yield Percentage ITMG.csv
+│   └── Deviden Yield Percentage PTBA.csv
+├── adro_fix.csv
+├── antm_fix.csv
+├── itmg_fix.csv
+└── ptba_fix.csv
+
+## 📈 Pembaruan Data
+Data harga saham diperbarui setiap 5 menit secara otomatis
+Data historis diambil dari file CSV yang telah disediakan
+Data dividen diambil dari dataset terpisah untuk setiap emiten
