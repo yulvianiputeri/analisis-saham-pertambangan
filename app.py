@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Analisis Perbandingan Saham", page_icon="📈", layout="wide")
 
-# Custom CSS dengan pembaruan style
+# Tambahkan CSS berikut di bagian awal kode setelah st.set_page_config
+
 st.markdown("""
     <style>
     .metric-card {
@@ -18,132 +19,95 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         text-align: center;
         transition: transform 0.3s ease;
+        height: 280px;  /* Fixed height untuk semua card */
+        width: 100%;    /* Full width dalam column */
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     .metric-card:hover {
         transform: translateY(-5px);
+    }
+    .metric-card h3 {
+        font-size: 1.1em;
+        margin-bottom: 10px;
+        color: #E5E7EB;
+        height: 40px;  /* Fixed height untuk judul */
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     .metric-value {
         font-size: 28px;
         font-weight: bold;
         color: #FFFFFF;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        margin: 10px 0;
     }
-    .metric-delta-positive {
-        font-size: 16px;
-        color: #10B981;
-        background-color: rgba(16, 185, 129, 0.1);
+    .metric-change {
+        margin: 10px 0;
         padding: 4px 8px;
         border-radius: 6px;
-    }
-    .metric-delta-negative {
         font-size: 16px;
-        color: #EF4444;
-        background-color: rgba(239, 68, 68, 0.1);
-        padding: 4px 8px;
-        border-radius: 6px;
     }
-    .main-header {
-        font-size: 36px;
-        font-weight: bold;
-        margin: 30px 0;
-        color: #FFFFFF;
-        text-align: center;
-        background: linear-gradient(90deg, #1E293B 0%, #334155 100%);
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    .metric-details {
+        font-size: 0.8em;
+        margin-top: 10px;
+        color: #E5E7EB;
     }
-    .chart-container {
-        background-color: white;
-        padding: 25px;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        margin: 20px 0;
+    .metric-details div {
+        margin: 5px 0;
     }
     </style>
 """, unsafe_allow_html=True)
 
 @st.cache_data(ttl=300)  # Cache selama 5 menit
 def get_real_time_data(ticker):
-    """Mengambil data harga real-time dan perubahan harga"""
+    """Mengambil data saham real-time dari Yahoo Finance"""
     try:
-        stock = yf.Ticker(ticker)
-        # Ambil data historis untuk 2 hari terakhir dengan interval 1 menit
-        hist = stock.history(period='2d', interval='1d')
+        stock = yf.Ticker(f"{ticker}.JK")  # Menambahkan .JK untuk saham Indonesia
         
-        if len(hist) >= 1:  # Ubah pengecekan menjadi minimal 1 data
-            current_price = hist['Close'].iloc[-1]
+        # Ambil data hari ini untuk harga terkini dan range harian
+        hist_day = stock.history(period='1d')
+        
+        # Ambil data 1 bulan untuk menghitung perubahan
+        hist_month = stock.history(period='1mo')
+        
+        if not hist_day.empty and not hist_month.empty:
+            current_price = hist_day['Close'].iloc[-1]
             
-            if len(hist) >= 2:
-                prev_price = hist['Close'].iloc[-2]
-                price_change = ((current_price - prev_price) / prev_price) * 100
-            else:
-                # Jika hanya ada 1 data, gunakan perubahan 0
-                price_change = 0.0
-                
-            return current_price, price_change, True
+            # Ambil harga awal bulan untuk perhitungan perubahan
+            month_start_price = hist_month['Close'].iloc[0]
+            monthly_change = ((current_price - month_start_price) / month_start_price) * 100
             
-        st.warning(f"Tidak ada data real-time untuk {ticker}")
-        return None, None, False
+            return {
+                'harga': current_price,
+                'perubahan': monthly_change,  # Perubahan dari awal bulan
+                'volume': hist_day['Volume'].iloc[-1],
+                'tertinggi': hist_day['High'].iloc[-1],  # menggunakan harga tertinggi hari ini
+                'terendah': hist_day['Low'].iloc[-1],    # menggunakan harga terendah hari ini
+                'sukses': True
+            }
+        
+        return {
+            'sukses': False,
+            'pesan': 'Data tidak tersedia'
+        }
         
     except Exception as e:
-        st.warning(f"Gagal mengambil data real-time untuk {ticker}: {str(e)}")
-        return None, None, False
+        return {
+            'sukses': False,
+            'pesan': f"Gagal mengambil data untuk {ticker}: {str(e)}"
+        }
 
 # Fungsi helper untuk memformat angka ke format Rupiah
 def format_rupiah(value):
     return f"Rp {value:,.2f}"
 
-# Fungsi untuk menampilkan metrik card
-def display_metric_card(col, ticker, nama):
-    """Menampilkan kartu metrik untuk satu saham"""
-    with col:
-        harga_sekarang, perubahan, success = get_real_time_data(ticker)
-        
-        if success and harga_sekarang is not None:
-            kelas_delta = "metric-delta-positive" if perubahan >= 0 else "metric-delta-negative"
-            st.markdown(f"""
-                <div class="metric-card">
-                    <h3 style="color: #E5E7EB;">{nama}</h3>
-                    <div class="metric-value">{format_rupiah(harga_sekarang)}</div>
-                    <div class="{kelas_delta}">
-                        {('▲' if perubahan >= 0 else '▼')} {abs(perubahan):.2f}%
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Tampilkan card dengan pesan error
-            st.markdown(f"""
-                <div class="metric-card">
-                    <h3 style="color: #E5E7EB;">{nama}</h3>
-                    <div class="metric-value" style="font-size: 18px;">Data tidak tersedia</div>
-                    <div style="font-size: 14px; color: #EF4444;">
-                        Gagal memuat data real-time
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
 @st.cache_data
 def get_data_from_csv(nama):
     """Membaca data dari file CSV"""
     return pd.read_csv(nama)
-
-@st.cache_data(ttl=300)  # Cache selama 5 menit
-def get_real_time_data(ticker):
-    """Mengambil data harga real-time dan perubahan harga"""
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period='2d')
-        if len(hist) >= 2:
-            current_price = hist['Close'].iloc[-1]
-            prev_price = hist['Close'].iloc[-2]
-            price_change = ((current_price - prev_price) / prev_price) * 100
-            return current_price, price_change, True
-        return None, None, False
-    except Exception as e:
-        st.error(f"Error mengambil data untuk {ticker}: {str(e)}")
-        return None, None, False
     
 def hitung_perubahan_harga(df, periode='D'):
     """
@@ -223,10 +187,73 @@ with st.sidebar:
         ma_periods = st.multiselect('Periode Moving Average', [5, 20, 50, 200], default=[20, 50])
     
     show_volume = st.checkbox('Tampilkan Volume', value=True)
+
     
+    # Menampilkan metrik real-time untuk setiap saham
+    saham = [
+        ("ADRO", "Adaro Energy"), 
+        ("PTBA", "Bukit Asam"), 
+        ("ITMG", "Indo Tambangraya Megah"),
+        ("ANTM", "Aneka Tambang")
+    ]
+
 # Konten utama
 if selected_option == "Comparasi Emiten":
     st.markdown("<h1 class='main-header'>📈 Dashboard Analisis Perbandingan Sektor Pertambangan</h1>", unsafe_allow_html=True)
+
+    # Menambahkan kartu harga real-time
+    st.subheader("💰 Harga Saham Real-time")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Menampilkan metrik real-time untuk setiap saham
+    saham = [
+        ("ADRO", "Adaro Energy"), 
+        ("PTBA", "Bukit Asam"), 
+        ("ITMG", "Indo Tambangraya Megah"),
+        ("ANTM", "Aneka Tambang")
+    ]
+
+    # Display metric cards
+    for col, (kode, nama) in zip([col1, col2, col3, col4], saham):
+        with col:
+            data = get_real_time_data(kode)
+            if data['sukses']:
+                warna_perubahan = "green" if data['perubahan'] >= 0 else "red"
+                simbol_perubahan = "▲" if data['perubahan'] >= 0 else "▼"
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <h3>{nama} ({kode})</h3>
+                        <div>
+                            <div class="metric-value">Rp {data['harga']:,.2f}</div>
+                            <div class="metric-change" style="color: {warna_perubahan};">
+                                {simbol_perubahan} {abs(data['perubahan']):.2f}% vs. awal bulan
+                            </div>
+                        </div>
+                        <div class="metric-details">
+                            <div>Volume: {data['volume']:,}</div>
+                            <div>Tertinggi Hari Ini: Rp {data['tertinggi']:,.2f}</div>
+                            <div>Terendah Hari Ini: Rp {data['terendah']:,.2f}</div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <h3>{nama} ({kode})</h3>
+                        <div class="metric-value">Data Tidak Tersedia</div>
+                        <div style="color: #EF4444; font-size: 0.8em;">
+                            {data['pesan']}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    # Informasi pembaruan otomatis (hanya sekali)
+    st.markdown("""
+        <div style="text-align: center; font-size: 0.8em; color: #FBFBFA;">
+            <br>Data diperbarui setiap 5 menit secara otomatis || Perubahan harga dihitung sejak awal bulan ini || Harga tertinggi dan terendah merupakan data hari ini
+        </div>
+    """, unsafe_allow_html=True)
+
 
     # Tabs untuk analisis berbeda
     tab1, tab2, tab3, tab4 = st.tabs(["📈 Analisis Harga", "📊 Analisis Volume", "📉 Analisis Korelasi", "💰 Analisis Dividen"])
@@ -245,7 +272,7 @@ if selected_option == "Comparasi Emiten":
 
             # Filter data berdasarkan periode atau rentang tanggal yang dipilih
             if period == 'custom':
-  # Filter untuk rentang tanggal kustom
+            # Filter untuk rentang tanggal kustom
                 df_list = [df_ptba, df_itmg, df_antm, df_adro]
                 filtered_dfs = []
                 
@@ -555,7 +582,24 @@ else:
                     '1mo': 30
                 }
                 start_date = end_date - pd.Timedelta(days=period_days[period])
-                df = df[df['Date'] >= start_date]
+                filtered_df = df[df['Date'] >= start_date].copy()
+                
+                # Cek apakah data tersedia untuk periode yang dipilih
+                if filtered_df.empty:
+                    earliest_date = df['Date'].min()
+                    latest_date = df['Date'].max()
+                    st.warning(f"""
+                    ⚠️ Tidak ada data untuk periode yang dipilih: {selected_period}
+                    
+                    Data {selected_option} tersedia untuk periode:
+                    - Tanggal awal: {earliest_date.strftime('%d %B %Y')}
+                    - Tanggal akhir: {latest_date.strftime('%d %B %Y')}
+                    
+                    Silakan pilih periode yang sesuai dengan rentang data yang tersedia.
+                    """)
+                    st.stop()
+                    
+                df = filtered_df
                 
             st.info(f"Menampilkan data untuk periode: {selected_period}")
 
@@ -564,96 +608,161 @@ else:
             
             # Metrics
             col1, col2, col3, col4 = st.columns(4)
-            metrics = {
-                'Harga Terakhir': df['Close'].iloc[-1],
-                'Volume Rata-rata': df['Volume'].mean(),
-                'Harga Tertinggi': df['High'].max(),
-                'Harga Terendah': df['Low'].min()
-            }
-            
-            for col, (label, value) in zip([col1, col2, col3, col4], metrics.items()):
-                with col:
-                    if 'Volume' in label:
-                        st.metric(label, f"{value:,.0f}")
-                    else:
-                        st.metric(label, f"Rp {value:,.2f}")
+            if len(df) > 0:  # Pastikan ada data sebelum menghitung metrik
+                metrics = {
+                    'Harga Terakhir': df['Close'].iloc[-1],
+                    'Volume Rata-rata': df['Volume'].mean(),
+                    'Harga Tertinggi': df['High'].max(),
+                    'Harga Terendah': df['Low'].min()
+                }
+                
+                for col, (label, value) in zip([col1, col2, col3, col4], metrics.items()):
+                    with col:
+                        if 'Volume' in label:
+                            st.metric(label, f"{value:,.0f}")
+                        else:
+                            st.metric(label, f"Rp {value:,.2f}")
 
-            # Tabs untuk analisis detail
-            tab1, tab2, tab3 = st.tabs(["📈 Analisis Teknikal", "📊 Analisis Volume", "💰 Analisis Dividen"])
+                # Tabs untuk analisis detail
+                tab1, tab2, tab3 = st.tabs(["📈 Analisis Teknikal", "📊 Analisis Volume", "💰 Analisis Dividen"])
 
-            with tab1:
-                # Candlestick chart
-                fig = go.Figure()
-                fig.add_trace(go.Candlestick(
-                    x=df['Date'],
-                    open=df['Open'],
-                    high=df['High'],
-                    low=df['Low'],
-                    close=df['Close'],
-                    name=selected_option
-                ))
-
-                if show_ma:
-                    for period in ma_periods:
-                        ma = df['Close'].rolling(window=period).mean()
-                        fig.add_trace(go.Scatter(
-                            x=df['Date'],
-                            y=ma,
-                            name=f'MA {period}',
-                            line=dict(width=1)
-                        ))
-
-                fig.update_layout(
-                    title=f"Grafik Harga {selected_option}",
-                    yaxis_title="Harga (Rp)",
-                    xaxis_title="Tanggal",
-                    height=600
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            with tab2:
-                if show_volume:
-                    st.subheader("Analisis Volume Transaksi")
-                    fig_vol = go.Figure()
-                    fig_vol.add_trace(go.Bar(
+                with tab1:
+                    fig = go.Figure()
+                    fig.add_trace(go.Candlestick(
                         x=df['Date'],
-                        y=df['Volume'],
-                        name="Volume"
+                        open=df['Open'],
+                        high=df['High'],
+                        low=df['Low'],
+                        close=df['Close'],
+                        name=selected_option
                     ))
-                    fig_vol.update_layout(
-                        title=f"Volume Transaksi {selected_option}",
-                        yaxis_title="Volume",
-                        xaxis_title="Tanggal",
-                        height=400
-                    )
-                    st.plotly_chart(fig_vol, use_container_width=True)
 
-            with tab3:
-                st.subheader("Analisis Dividen")
-                try:
-                    df_dividen = get_data_from_csv(f'dataset_dividen/Deviden Yield Percentage {selected_option}.csv')
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        fig_div = px.bar(
-                            df_dividen,
-                            x='Tahun',
-                            y='Jumlah Dividen',
-                            title=f"Total Dividen {selected_option} per Tahun"
+                    if show_ma:
+                        for period in ma_periods:
+                            if len(df) >= period:  # Cek apakah cukup data untuk MA
+                                ma = df['Close'].rolling(window=period).mean()
+                                fig.add_trace(go.Scatter(
+                                    x=df['Date'],
+                                    y=ma,
+                                    name=f'MA {period}',
+                                    line=dict(width=1)
+                                ))
+
+                    fig.update_layout(
+                        title=f"Grafik Harga {selected_option}",
+                        yaxis_title="Harga (Rp)",
+                        xaxis_title="Tanggal",
+                        height=600
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with tab2:
+                    if show_volume:
+                        st.subheader("Analisis Volume Transaksi")
+                        fig_vol = go.Figure()
+                        fig_vol.add_trace(go.Bar(
+                            x=df['Date'],
+                            y=df['Volume'],
+                            name="Volume"
+                        ))
+                        fig_vol.update_layout(
+                            title=f"Volume Transaksi {selected_option}",
+                            yaxis_title="Volume",
+                            xaxis_title="Tanggal",
+                            height=400
                         )
-                        st.plotly_chart(fig_div, use_container_width=True)
-                    
-                    with col2:
-                        fig_yield = px.bar(
-                            df_dividen,
-                            x='Tahun',
-                            y='Yield Percentage',
-                            title=f"Dividend Yield {selected_option} (%)"
-                        )
-                        st.plotly_chart(fig_yield, use_container_width=True)
-                    
-                except Exception as e:
-                    st.error(f"Data dividen untuk {selected_option} tidak tersedia")
+                        st.plotly_chart(fig_vol, use_container_width=True)
+
+                with tab3:
+                    st.subheader("Analisis Dividen")
+                    try:
+                        df_dividen = get_data_from_csv(f'dataset_dividen/Deviden Yield Percentage {selected_option}.csv')
+                        
+                        if not df_dividen.empty:
+                            # Filter berdasarkan periode yang dipilih
+                            if period == 'custom':
+                                # Untuk rentang tanggal kustom
+                                start_year = pd.to_datetime(start_date).year
+                                end_year = pd.to_datetime(end_date).year
+                                filtered_dividen = df_dividen[
+                                    (df_dividen['Tahun'] >= start_year) & 
+                                    (df_dividen['Tahun'] <= end_year)
+                                ]
+                            elif period != 'max':
+                                # Untuk periode preset
+                                end_year = pd.Timestamp.now().year
+                                years_map = {
+                                    '10y': 10,
+                                    '5y': 5,
+                                    '3y': 3,
+                                    '1y': 1,
+                                    '6mo': 1,  # Untuk periode < 1 tahun, ambil data 1 tahun terakhir
+                                    '3mo': 1,
+                                    '1mo': 1
+                                }
+                                years_back = years_map.get(period, 0)
+                                start_year = end_year - years_back
+                                filtered_dividen = df_dividen[
+                                    (df_dividen['Tahun'] >= start_year)
+                                ]
+                            else:
+                                filtered_dividen = df_dividen.copy()
+
+                            if not filtered_dividen.empty:
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    fig_div = px.bar(
+                                        filtered_dividen,
+                                        x='Tahun',
+                                        y='Jumlah Dividen',
+                                        title=f"Total Dividen {selected_option} ({selected_period})"
+                                    )
+                                    fig_div.update_layout(
+                                        yaxis_title="Jumlah Dividen (Rp)",
+                                        xaxis_title="Tahun"
+                                    )
+                                    st.plotly_chart(fig_div, use_container_width=True)
+                                
+                                with col2:
+                                    fig_yield = px.bar(
+                                        filtered_dividen,
+                                        x='Tahun',
+                                        y='Yield Percentage',
+                                        title=f"Dividend Yield {selected_option} % ({selected_period})"
+                                    )
+                                    fig_yield.update_layout(
+                                        yaxis_title="Dividend Yield (%)",
+                                        xaxis_title="Tahun"
+                                    )
+                                    st.plotly_chart(fig_yield, use_container_width=True)
+
+                                # Tampilkan statistik untuk periode yang dipilih
+                                st.subheader(f"Statistik Dividen {selected_period}")
+                                stats = {
+                                    'Total Dividen': f"Rp {filtered_dividen['Jumlah Dividen'].sum():,.2f}",
+                                    'Rata-rata Dividen': f"Rp {filtered_dividen['Jumlah Dividen'].mean():,.2f}",
+                                    'Dividen Tertinggi': f"Rp {filtered_dividen['Jumlah Dividen'].max():,.2f}",
+                                    'Rata-rata Yield': f"{filtered_dividen['Yield Percentage'].mean():.2f}%",
+                                    'Yield Tertinggi': f"{filtered_dividen['Yield Percentage'].max():.2f}%"
+                                }
+                                
+                                # Tampilkan statistik dalam format yang lebih menarik
+                                col1, col2, col3, col4, col5 = st.columns(5)
+                                for col, (label, value) in zip(
+                                    [col1, col2, col3, col4, col5], 
+                                    stats.items()
+                                ):
+                                    with col:
+                                        st.metric(label=label, value=value)
+                            else:
+                                st.warning(f"Tidak ada data dividen untuk periode {selected_period}")
+                        else:
+                            st.warning("Data dividen tidak tersedia")
+                        
+                    except FileNotFoundError:
+                        st.warning(f"File data dividen untuk {selected_option} tidak ditemukan")
+                    except Exception as e:
+                        st.error(f"Terjadi kesalahan dalam memproses data dividen: {str(e)}")
 
         except Exception as e:
-            st.error(f"Terjadi kesalahan dalam memproses data: {e}")
+            st.error(f"Terjadi kesalahan dalam memproses data: {str(e)}")
