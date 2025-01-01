@@ -234,10 +234,10 @@ if selected_option == "Comparasi Emiten":
 # Tab Analisis Harga
     with tab1:
         try:
-            df_antm = get_data_from_csv("./antm_fix.csv")
-            df_itmg = get_data_from_csv("./itmg_fix.csv")
-            df_adro = get_data_from_csv("./adro_fix.csv")
-            df_ptba = get_data_from_csv("./ptba_fix.csv")
+            df_antm = get_data_from_csv("antm_fix.csv")
+            df_itmg = get_data_from_csv("itmg_fix.csv")
+            df_adro = get_data_from_csv("adro_fix.csv")
+            df_ptba = get_data_from_csv("ptba_fix.csv")
 
             for df in [df_ptba, df_itmg, df_antm, df_adro]:
                 df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None)
